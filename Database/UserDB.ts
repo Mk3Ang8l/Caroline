@@ -14,8 +14,9 @@ export class UserDB {
       { name: 'bankruptcies', type: 'INT DEFAULT 0' },
       { name: 'total_wins', type: 'INT DEFAULT 0' },
       { name: 'total_losses', type: 'INT DEFAULT 0' },
-      { name: 'last_daily', type: 'BIGINT' },
-      { name: 'last_steal', type: 'BIGINT DEFAULT 0' }
+      { name: 'last_steal', type: 'BIGINT DEFAULT 0' },
+      { name: 'discount_until', type: 'BIGINT DEFAULT 0' },
+      { name: 'luck_until', type: 'BIGINT DEFAULT 0' }
     ];
 
     for (const col of columns) {
@@ -63,12 +64,14 @@ export class UserDB {
       createdAt: Date.now(),
       lastDaily: null,
       lastSteal: null,
+      discountUntil: null,
+      luckUntil: null,
     };
 
     await this.pool.query(
-      `INSERT INTO users (id, username, balance, bank_balance, bankruptcies, total_wins, total_losses, created_at, last_daily, last_steal)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [user.id, user.username, user.balance, user.bankBalance, user.bankruptcies, user.totalWins, user.totalLosses, user.createdAt, user.lastDaily, user.lastSteal]
+      `INSERT INTO users (id, username, balance, bank_balance, bankruptcies, total_wins, total_losses, created_at, last_daily, last_steal, discount_until, luck_until)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [user.id, user.username, user.balance, user.bankBalance, user.bankruptcies, user.totalWins, user.totalLosses, user.createdAt, user.lastDaily, user.lastSteal, user.discountUntil, user.luckUntil]
     );
 
     return user;
@@ -86,6 +89,8 @@ export class UserDB {
       createdAt: Number(row.created_at),
       lastDaily: row.last_daily ? Number(row.last_daily) : null,
       lastSteal: row.last_steal ? Number(row.last_steal) : null,
+      discountUntil: row.discount_until ? Number(row.discount_until) : null,
+      luckUntil: row.luck_until ? Number(row.luck_until) : null,
     };
   }
 
@@ -101,9 +106,9 @@ export class UserDB {
 
   async updateUser(user: User): Promise<void> {
     await this.pool.query(
-      `UPDATE users SET username = $2, balance = $3, bank_balance = $4, bankruptcies = $5, total_wins = $6, total_losses = $7, last_daily = $8, last_steal = $9
+      `UPDATE users SET username = $2, balance = $3, bank_balance = $4, bankruptcies = $5, total_wins = $6, total_losses = $7, last_daily = $8, last_steal = $9, discount_until = $10, luck_until = $11
        WHERE id = $1`,
-      [user.id, user.username, user.balance, user.bankBalance, user.bankruptcies, user.totalWins, user.totalLosses, user.lastDaily, user.lastSteal]
+      [user.id, user.username, user.balance, user.bankBalance, user.bankruptcies, user.totalWins, user.totalLosses, user.lastDaily, user.lastSteal, user.discountUntil, user.luckUntil]
     );
   }
 

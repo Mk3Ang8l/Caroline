@@ -31,7 +31,7 @@ export function getConfig(): BotConfig {
   if (config) return config;
 
   try {
-    const configPath = path.resolve(__dirname, '../config/config.yaml');
+    const configPath = path.resolve(process.cwd(), 'config/config.yaml');
     const fileContents = fs.readFileSync(configPath, 'utf8');
     config = yaml.load(fileContents) as BotConfig;
     return config;

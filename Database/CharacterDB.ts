@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { Character, UserCharacter, MarketListing } from './types';
+import { Character, CharacterRarity, UserCharacter, MarketListing } from './types';
 
 export class CharacterDB {
   private pool: Pool;
@@ -9,7 +9,6 @@ export class CharacterDB {
   }
 
   async ensureSchema(): Promise<void> {
-    // Table des personnages (catalogue)
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS characters (
         id SERIAL PRIMARY KEY,
@@ -19,32 +18,33 @@ export class CharacterDB {
         rarity VARCHAR(20) NOT NULL,
         base_price INT NOT NULL,
         image_url TEXT NOT NULL,
-        mal_id INT
+        mal_id INT UNIQUE
       )
     `);
 
-    // Migration : Ajouter mal_id si absent
-    await this.pool.query(`
-      DO $$ 
-      BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='characters' AND column_name='mal_id') THEN
-          ALTER TABLE characters ADD COLUMN mal_id INT;
-        END IF;
-      END $$;
-    `);
+    const cols = [
+      { name: 'mal_id', type: 'INT UNIQUE' }
+    ];
 
-    // Table des cartes possédées par les joueurs
+    for (const col of cols) {
+      await this.pool.query(`
+        DO $$ 
+        BEGIN 
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='characters' AND column_name='${col.name}') THEN
+            ALTER TABLE characters ADD COLUMN ${col.name} ${col.type};
+          END IF;
+        END $$;
+      `);
+    }
+
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS user_characters (
         card_id SERIAL PRIMARY KEY,
-        user_id VARCHAR(30) NOT NULL,
+        user_id VARCHAR(50) NOT NULL,
         character_id INT NOT NULL REFERENCES characters(id),
         acquired_at BIGINT NOT NULL
-      )
-    `);
+      );
 
-    // Table du marché joueur-à-joueur
-    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS market_listings (
         listing_id SERIAL PRIMARY KEY,
         seller_id VARCHAR(30) NOT NULL,
@@ -52,14 +52,13 @@ export class CharacterDB {
         card_id INT NOT NULL REFERENCES user_characters(card_id),
         price INT NOT NULL,
         listed_at BIGINT NOT NULL
-      )
+      );
     `);
   }
 
-  // --- CATALOGUE ---
   async getAllCharacters(): Promise<Character[]> {
     const res = await this.pool.query('SELECT * FROM characters ORDER BY base_price DESC');
-    return res.rows.map(this.rowToCharacter);
+    return res.rows.map((r) => this.rowToCharacter(r));
   }
 
   async getCharacterById(id: number): Promise<Character | undefined> {
@@ -92,7 +91,6 @@ export class CharacterDB {
     return this.rowToCharacter(res.rows[0]);
   }
 
-  // --- COLLECTION JOUEUR ---
   async getUserCollection(userId: string): Promise<UserCharacter[]> {
     const res = await this.pool.query(`
       SELECT uc.card_id, uc.user_id, uc.character_id, uc.acquired_at,
@@ -102,7 +100,7 @@ export class CharacterDB {
       WHERE uc.user_id = $1
       ORDER BY uc.acquired_at DESC
     `, [userId]);
-    return res.rows.map(this.rowToUserCharacter);
+    return res.rows.map((r) => this.rowToUserCharacter(r));
   }
 
   async getUserCard(cardId: number): Promise<UserCharacter | undefined> {
@@ -153,7 +151,6 @@ export class CharacterDB {
     return res.rows[0] ? { userId: res.rows[0].user_id } : undefined;
   }
 
-  // --- MARCHÉ ---
   async createListing(sellerId: string, sellerName: string, cardId: number, price: number): Promise<MarketListing> {
     const res = await this.pool.query(
       `INSERT INTO market_listings (seller_id, seller_name, card_id, price, listed_at)
@@ -186,7 +183,7 @@ export class CharacterDB {
       ORDER BY ml.listed_at DESC
       LIMIT 20
     `);
-    return res.rows.map(this.rowToListing);
+    return res.rows.map((r) => this.rowToListing(r));
   }
 
   async getListingByCardId(cardId: number): Promise<MarketListing | undefined> {
@@ -199,7 +196,6 @@ export class CharacterDB {
     await this.pool.query('DELETE FROM market_listings WHERE listing_id = $1', [listingId]);
   }
 
-  // --- HELPERS ---
   private rowToCharacter(row: any): Character {
     return {
       id: row.id,

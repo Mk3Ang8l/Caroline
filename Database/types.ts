@@ -9,6 +9,8 @@ export interface User {
   createdAt: number;
   lastDaily: number | null;
   lastSteal: number | null;
+  discountUntil: number | null;
+  luckUntil: number | null;
 }
 
 export interface GameResult {

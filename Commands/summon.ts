@@ -1,5 +1,3 @@
-//invoque les personnage avec une rareter aleatoire
-
 import {
   ContainerBuilder,
   ActionRowBuilder,
@@ -14,7 +12,6 @@ import { CharacterDB } from "../Database/CharacterDB";
 import { HybridInteraction } from "../Utils/HybridInteraction";
 import { Logger } from "../Utils/Logger";
 import { CharacterRarity, Character } from "../Database/types";
-
 import { getConfig } from '../Utils/ConfigLoader';
 
 const config = getConfig();
@@ -28,13 +25,19 @@ const RARITY_LABEL: Record<CharacterRarity, string> = {
 
 const RARITY_PRICES: Record<CharacterRarity, number> = config.summon.prices as Record<CharacterRarity, number>;
 
-function getRandomRarity(): CharacterRarity {
+function getRandomRarity(luckBoost: boolean = false): CharacterRarity {
   const rand = Math.random() * 100;
-  const chances = config.summon.chances;
+  const baseChances = config.summon.chances;
+  
+  const chances = luckBoost ? {
+    légendaire: baseChances.légendaire * 2,
+    épique: baseChances.épique * 1.5,
+    rare: baseChances.rare * 1.2,
+  } : baseChances;
 
   if (rand < chances.légendaire) return "légendaire";
-  if (rand < chances.épique) return "épique";
-  if (rand < chances.rare) return "rare";
+  if (rand < (chances.légendaire + (chances.épique || 0))) return "épique";
+  if (rand < (chances.légendaire + (chances.épique || 0) + (chances.rare || 0))) return "rare";
   return "commune";
 }
 
@@ -61,7 +64,6 @@ export async function summonCommand(
   }
 
   if (!nameQuery) {
-    // Personnage aléatoire du catalogue local
     const character = await characterDB.getRandomCharacter();
     await displaySummon(hybrid, userDB, characterDB, [character]);
     return;
@@ -71,7 +73,6 @@ export async function summonCommand(
     let finalQuery = nameQuery;
     if (animeQuery) finalQuery += ` ${animeQuery}`;
 
-    Logger.debug(`Recherche Jikan pour: ${finalQuery}`, 'SUMMON');
     const res = await fetch(
       `https://api.jikan.moe/v4/characters?q=${encodeURIComponent(finalQuery)}&limit=15`,
     );
@@ -79,7 +80,6 @@ export async function summonCommand(
 
     if (data && data.data && data.data.length > 0) {
       const results = data.data.map((malChar: any) => {
-        // Extraire le nom de la série (Anime ou Manga)
         let series = "Inconnu";
         if (malChar.anime && malChar.anime.length > 0) {
           series = malChar.anime[0].anime.title;
@@ -95,7 +95,6 @@ export async function summonCommand(
         };
       });
 
-      Logger.debug(`${results.length} résultats trouvés.`, 'SUMMON');
       await displaySummon(hybrid, userDB, characterDB, results);
     } else {
       const c = new ContainerBuilder().addTextDisplayComponents((t) =>
@@ -104,7 +103,6 @@ export async function summonCommand(
       await hybrid.send(c);
     }
   } catch (error) {
-    Logger.error('Erreur lors du summon', error, 'SUMMON');
     const c = new ContainerBuilder().addTextDisplayComponents((t) =>
       t.setContent(`Erreur lors de la recherche du personnage.`),
     );
@@ -131,7 +129,6 @@ async function displaySummon(
         character = await characterDB.getCharacterByMalId(malChar.malId);
       }
 
-      // Si on n'a pas encore la série, on va la chercher sur Jikan (Full Details)
       if (!malChar.seriesFetched && !character) {
         try {
           const detailRes = await fetch(`https://api.jikan.moe/v4/characters/${malChar.malId}/full`);
@@ -146,12 +143,14 @@ async function displaySummon(
             malChar.series = series;
             malChar.seriesFetched = true;
           }
-        } catch (err) {
-          Logger.error(`Erreur fetch détails Jikan pour ${malChar.malId}`, err, 'SUMMON');
-        }
+        } catch (err) { }
       }
 
-      const tempRarity = getRandomRarity();
+      const user = await userDB.getUserOrCreate(hybrid.user.id, hybrid.user.username);
+      const hasLuck = user.luckUntil ? user.luckUntil > Date.now() : false;
+      const hasDiscount = user.discountUntil ? user.discountUntil > Date.now() : false;
+
+      const tempRarity = getRandomRarity(hasLuck);
       const displayInfo = {
         name: character?.name || malChar.name,
         series: character?.series || malChar.series || "Inconnu",
@@ -162,7 +161,11 @@ async function displaySummon(
 
       const owner = character ? await characterDB.getCharacterOwner(character.id) : undefined;
       const totalWealth = await userDB.getTotalWealth();
-      const dynamicPrice = Math.floor(displayInfo.basePrice + totalWealth * config.summon.inflation_rate);
+      let dynamicPrice = Math.floor(displayInfo.basePrice + totalWealth * config.summon.inflation_rate);
+      
+      if (hasDiscount) dynamicPrice = Math.floor(dynamicPrice * 0.8);
+
+      const bonusText = (hasLuck ? "🍀 **Luck Boost actif**\n" : "") + (hasDiscount ? "🏷️ **Réduction -20% active**\n" : "");
 
       const container = new ContainerBuilder()
         .addTextDisplayComponents((t) =>
@@ -171,6 +174,7 @@ async function displaySummon(
             `Série : *${displayInfo.series}*\n` +
             `Rareté : **${RARITY_LABEL[displayInfo.rarity as CharacterRarity]}**\n` +
             `Prix : **$${dynamicPrice.toLocaleString("fr-FR")}**\n\n` +
+            bonusText +
             (owner
               ? ` Ce personnage est unique et appartient déjà à <@${owner.userId}>.`
               : ` Ce personnage est disponible !`),
@@ -212,7 +216,6 @@ async function displaySummon(
         return await hybrid.send(container, options.files, [row]);
       }
     } catch (e) {
-      Logger.error('Erreur updateMessage', e, 'SUMMON');
       throw e;
     }
   };
@@ -221,7 +224,7 @@ async function displaySummon(
 
   const collector = msg.createMessageComponentCollector({
     componentType: ComponentType.Button,
-    time: 3600_000, // 1 heure
+    time: 3600_000,
   });
 
   collector.on("collect", async (btn: ButtonInteraction) => {
@@ -249,11 +252,13 @@ async function displaySummon(
       } else {
         character = await characterDB.getCharacterByMalId(malChar.malId);
         if (!character) {
-          // Création à la volée s'il n'existe pas encore
-          const rarity = getRandomRarity();
+          const userForLuck = await userDB.getUserOrCreate(btn.user.id, btn.user.username);
+          const hasLuck = userForLuck.luckUntil ? userForLuck.luckUntil > Date.now() : false;
+          
+          const rarity = getRandomRarity(hasLuck);
           character = await characterDB.createCharacter({
             name: malChar.name,
-            series: "Anime / Manga",
+            series: malChar.series || "Anime / Manga",
             type: "anime",
             rarity: rarity,
             basePrice: RARITY_PRICES[rarity],
@@ -264,15 +269,17 @@ async function displaySummon(
       }
 
       const totalWealth = await userDB.getTotalWealth();
-      const dynamicPrice = Math.floor(character!.basePrice + totalWealth * config.summon.inflation_rate);
+      let dynamicPrice = Math.floor(character!.basePrice + totalWealth * config.summon.inflation_rate);
       const user = await userDB.getUserOrCreate(btn.user.id, btn.user.username);
+      
+      const hasDiscount = user.discountUntil ? user.discountUntil > Date.now() : false;
+      if (hasDiscount) dynamicPrice = Math.floor(dynamicPrice * 0.8);
 
       if (user.balance < dynamicPrice) {
         await btn.followUp({ content: "Solde insuffisant.", flags: MessageFlags.Ephemeral });
         return;
       }
 
-      // Re-vérifier l'owner au dernier moment pour éviter les courses
       const owner = await characterDB.getCharacterOwner(character!.id);
       if (owner) {
         await btn.followUp({ content: "Désolé, ce personnage vient d'être acheté par quelqu'un d'autre !", flags: MessageFlags.Ephemeral });
@@ -305,7 +312,7 @@ async function displaySummon(
     }
   });
 
-  collector.on("end", async (_, reason) => {
+  collector.on("end", async (_: any, reason: string) => {
     if (reason === "time") {
       try {
         const disabledContainer = new ContainerBuilder()

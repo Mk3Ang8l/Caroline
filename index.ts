@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, ChannelType } from 'discord.js';
+import { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, ChannelType, TextChannel } from 'discord.js';
 import { Pool } from 'pg';
 import { UserDB } from './Database/UserDB';
 import { HybridInteraction } from './Utils/HybridInteraction';
@@ -20,13 +20,13 @@ import { tradeCommand } from './Commands/trade';
 import { bankerGiveCommand } from './Commands/banker';
 import { stealCommand } from './Commands/steal';
 import { prefixCommand } from './Commands/prefix';
+import { spawnChest, spawnChestCommand } from './Commands/chest';
 import { CharacterDB } from './Database/CharacterDB';
 import { User, GameResult } from './Database/types';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-// Gestion des erreurs non capturées du processus
 process.on('unhandledRejection', (reason) => {
   Logger.error('Unhandled Promise Rejection', reason, 'PROCESS');
 });
@@ -63,6 +63,12 @@ const userDB = new UserDB(pool);
 const characterDB = new CharacterDB(pool);
 
 let currentPrefix = '!';
+let lastChestTime = 0;
+const channelActivity = new Map<string, number>();
+const activeUsers = new Set<string>();
+const CHEST_COOLDOWN = 10 * 60 * 1000;
+const ACTIVITY_THRESHOLD = 15;
+const MIN_USERS = 5;
 
 const commands = [
   new SlashCommandBuilder()
@@ -169,6 +175,11 @@ const commands = [
     .toJSON(),
 
   new SlashCommandBuilder()
+    .setName('spawnchest')
+    .setDescription('Forcer l\'apparition d\'un coffre (Admin)')
+    .toJSON(),
+
+  new SlashCommandBuilder()
     .setName('give')
     .setDescription('Donner de l\'argent (Réservé au Banquier)')
     .addUserOption(opt => opt.setName('user').setDescription('Utilisateur').setRequired(true))
@@ -193,7 +204,6 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN as s
 client.on('clientReady', async () => {
   Logger.info(`Bot démarré: ${client.user?.tag}`, 'CLIENT');
 
-  // Charger le préfixe depuis la DB
   currentPrefix = await userDB.getPrefix();
   
   try {
@@ -203,13 +213,63 @@ client.on('clientReady', async () => {
   } catch (error) {
     ErrorHandler.handle(error, 'REST_REGISTRATION');
   }
+
+  startChestScheduler();
+  
+  setInterval(() => {
+    channelActivity.forEach((val, key) => {
+      if (val > 0) channelActivity.set(key, Math.floor(val * 0.8));
+    });
+    activeUsers.clear();
+  }, 5 * 60 * 1000);
 });
 
-// Slash commands handler
+async function triggerChest(channel: any) {
+  if (Date.now() - lastChestTime < CHEST_COOLDOWN) return;
+  if (activeUsers.size < MIN_USERS) return;
+
+  lastChestTime = Date.now();
+  await spawnChest(channel, userDB);
+}
+
+function startChestScheduler() {
+  const minTime = 1 * 60 * 1000;
+  const maxTime = 30 * 60 * 1000;
+  const randomDelay = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+
+  setTimeout(async () => {
+    try {
+      const guild = client.guilds.cache.first();
+      if (guild && activeUsers.size >= MIN_USERS) {
+        let mostActiveChannelId = '';
+        let maxAct = -1;
+        
+        channelActivity.forEach((val, id) => {
+          if (val > maxAct) {
+            maxAct = val;
+            mostActiveChannelId = id;
+          }
+        });
+
+        const channel = (mostActiveChannelId 
+          ? guild.channels.cache.get(mostActiveChannelId) 
+          : guild.channels.cache.find(c => c.type === ChannelType.GuildText)) as any;
+
+        if (channel) {
+          await triggerChest(channel);
+        }
+      }
+    } catch (err) {
+      Logger.error('Erreur spawn auto coffre', err, 'CHEST_EVENT');
+    }
+    startChestScheduler();
+  }, randomDelay);
+}
+
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  Logger.debug(`Commande slash reçue: ${interaction.commandName} par ${interaction.user.tag}`, 'INTERACTION');
+  activeUsers.add(interaction.user.id);
 
   try {
     await interaction.deferReply();
@@ -231,6 +291,7 @@ client.on('interactionCreate', async (interaction) => {
       case 'summon': await summonCommand(hybrid, userDB, characterDB); break;
       case 'give': await bankerGiveCommand(hybrid, userDB); break;
       case 'steal': await stealCommand(hybrid, userDB); break;
+      case 'spawnchest': await spawnChestCommand(hybrid, userDB); break;
       case 'prefix': 
         await prefixCommand(hybrid, userDB);
         currentPrefix = await userDB.getPrefix();
@@ -244,9 +305,18 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Prefix commands handler
 client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.content.startsWith(currentPrefix)) return;
+  if (message.author.bot) return;
+  
+  const activity = (channelActivity.get(message.channel.id) || 0) + 1;
+  channelActivity.set(message.channel.id, activity);
+  activeUsers.add(message.author.id);
+
+  if (activity >= ACTIVITY_THRESHOLD) {
+    await triggerChest(message.channel);
+  }
+
+  if (!message.content.startsWith(currentPrefix)) return;
   if (message.channel.type === ChannelType.DM) return;
 
   const args = message.content.slice(currentPrefix.length).trim().split(/\s+/);
@@ -286,6 +356,7 @@ client.on('messageCreate', async (message) => {
       case 'summon': await summonCommand(hybrid, userDB, characterDB); break;
       case 'give': await bankerGiveCommand(hybrid, userDB); break;
       case 'steal': await stealCommand(hybrid, userDB); break;
+      case 'spawnchest': await spawnChestCommand(hybrid, userDB); break;
       case 'prefix':
         await prefixCommand(hybrid, userDB);
         currentPrefix = await userDB.getPrefix();
@@ -316,4 +387,3 @@ async function startBot() {
 }
 
 startBot();
-
