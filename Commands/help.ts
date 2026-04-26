@@ -19,7 +19,7 @@ export async function helpCommand(
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents((textDisplay) =>
       textDisplay.setContent(
-        `### 👤 Profil & Economie\n` +
+        `###  Profil & Economie\n` +
           `**profile** \`[@user]\` — Ton profil (alias : \`p\`, \`prof\`)\n` +
           `**leaderboard** — Top 10 des plus riches\n` +
           `**daily** — Récompense quotidienne\n` +
@@ -32,7 +32,7 @@ export async function helpCommand(
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents((textDisplay) =>
       textDisplay.setContent(
-        `### 🎴 Personnages & Collection\n` +
+        `### Personnages & Collection\n` +
           `**summon** \`[nom]\` — Invoquer un personnage (ex: \`${prefix}summon saitama\`)\n` +
           `**collection** \`[@user]\` — Voir tes personnages (alias : \`c\`, \`col\`)\n` +
           `**trade** \`<nom> <offre>\` — Proposer un achat (alias : \`t\`)`
@@ -41,7 +41,7 @@ export async function helpCommand(
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents((textDisplay) =>
       textDisplay.setContent(
-        `### 🎰 Jeux & Gambling\n` +
+        `###  Jeux & Gambling\n` +
           `**roulette** \`<rouge|noir|vert|0-36> <mise>\` — Roulette casino (alias : \`r\`)\n` +
           `**russeroulette** \`<mise>\` — Roulette russe (alias : \`rr\`)\n` +
           `**diceroll** \`<pair|impair> <mise>\` — Dé x1.5 (alias : \`d\`, \`dice\`)`
@@ -50,7 +50,7 @@ export async function helpCommand(
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents((textDisplay) =>
       textDisplay.setContent(
-        `### 🛠️ Administration\n` +
+        `###  Administration\n` +
           `**give** \`@user <montant>\` — Donner de l'argent (Banquier uniquement)\n` +
           `**prefix** \`<nouveau>\` — Changer le préfixe (Owner uniquement)`
       ),
