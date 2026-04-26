@@ -1,0 +1,26 @@
+bot:
+  owner_id: "1278669161584922658"
+  banker_id: "1278669161584922658"
+  default_prefix: "!"
+
+economy:
+  daily_reward: 500
+  work_min: 100
+  work_max: 300
+
+summon:
+  prices:
+    commune: 1000
+    rare: 4000
+    épique: 8000
+    légendaire: 14000
+  inflation_rate: 0.005 # 0.5% de la richesse totale
+  chances:
+    légendaire: 5
+    épique: 15
+    rare: 40
+
+steal:
+  cooldown_hours: 10
+  success_chance: 0.45
+  min_victim_balance: 100

@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: caroline_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-caroline_bot}
+      POSTGRES_USER: ${DB_USER:-caroline}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password123}
+    ports:
+      - '5432:5432'
+    volumes:
+      - caroline_pgdata:/var/lib/postgresql/data
+      - ./Database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  bot:
+    build: .
+    container_name: caroline_bot
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DATABASE_URL: postgresql://${DB_USER:-caroline}:${DB_PASSWORD:-password123}@db:5432/${DB_NAME:-caroline_bot}
+    volumes:
+      - ./config:/app/config
+
+volumes:
+  caroline_pgdata:
