@@ -18,8 +18,19 @@ export class CharacterDB {
         type VARCHAR(20) NOT NULL,
         rarity VARCHAR(20) NOT NULL,
         base_price INT NOT NULL,
-        image_url TEXT NOT NULL
+        image_url TEXT NOT NULL,
+        mal_id INT
       )
+    `);
+
+    // Migration : Ajouter mal_id si absent
+    await this.pool.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='characters' AND column_name='mal_id') THEN
+          ALTER TABLE characters ADD COLUMN mal_id INT;
+        END IF;
+      END $$;
     `);
 
     // Table des cartes possédées par les joueurs
@@ -67,11 +78,16 @@ export class CharacterDB {
     return this.rowToCharacter(res.rows[0]);
   }
 
+  async getCharacterByMalId(malId: number): Promise<Character | undefined> {
+    const res = await this.pool.query('SELECT * FROM characters WHERE mal_id = $1', [malId]);
+    return res.rows[0] ? this.rowToCharacter(res.rows[0]) : undefined;
+  }
+
   async createCharacter(c: Omit<Character, 'id'>): Promise<Character> {
     const res = await this.pool.query(
-      `INSERT INTO characters (name, series, type, rarity, base_price, image_url)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [c.name, c.series, c.type, c.rarity, c.basePrice, c.imageUrl]
+      `INSERT INTO characters (name, series, type, rarity, base_price, image_url, mal_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [c.name, c.series, c.type, c.rarity, c.basePrice, c.imageUrl, c.malId || null]
     );
     return this.rowToCharacter(res.rows[0]);
   }
@@ -193,6 +209,7 @@ export class CharacterDB {
       rarity: row.rarity,
       basePrice: Number(row.base_price),
       imageUrl: row.image_url,
+      malId: row.mal_id ? Number(row.mal_id) : null,
     };
   }
 
@@ -210,6 +227,7 @@ export class CharacterDB {
         rarity: row.rarity,
         basePrice: Number(row.base_price),
         imageUrl: row.image_url,
+        malId: row.mal_id ? Number(row.mal_id) : null,
       } : undefined,
     };
   }
@@ -230,6 +248,7 @@ export class CharacterDB {
         rarity: row.rarity,
         basePrice: Number(row.base_price),
         imageUrl: row.image_url,
+        malId: row.mal_id ? Number(row.mal_id) : null,
       } : undefined,
     };
   }

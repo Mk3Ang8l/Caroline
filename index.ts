@@ -163,6 +163,9 @@ const commands = [
     .addStringOption(opt =>
       opt.setName('name').setDescription('Nom du personnage à chercher').setRequired(false)
     )
+    .addStringOption(opt =>
+      opt.setName('anime').setDescription('Filtrer par nom d\'anime/manga').setRequired(false)
+    )
     .toJSON(),
 
   new SlashCommandBuilder()

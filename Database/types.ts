@@ -29,6 +29,7 @@ export interface Character {
   rarity: CharacterRarity;
   basePrice: number;
   imageUrl: string;
+  malId?: number | null;
 }
 
 export interface UserCharacter {

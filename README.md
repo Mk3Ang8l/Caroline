@@ -1,4 +1,4 @@
-# Caroline - Discord Economy Bot
+d# Caroline - Discord Economy Bot
 
 Caroline est un bot Discord d'economie et de collection de personnages base sur Jikan API.
 
